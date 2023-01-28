@@ -3158,6 +3158,109 @@ a=rtpmap:0 PCMU/8000
         )
 
     @asynctest
+    async def test_connect_video_ice_transport_policy(self):
+        pc1 = RTCPeerConnection(RTCConfiguration(
+            iceTransportPolicy=aioice.ice.TransportPolicy.ALL))
+        pc1_states = track_states(pc1)
+
+        pc2 = RTCPeerConnection(RTCConfiguration(
+            iceTransportPolicy=aioice.ice.TransportPolicy.RELAY))
+        pc2_states = track_states(pc2)
+
+        self.assertEqual(pc1.iceConnectionState, "new")
+        self.assertEqual(pc1.iceGatheringState, "new")
+        self.assertIsNone(pc1.localDescription)
+        self.assertIsNone(pc1.remoteDescription)
+
+        self.assertEqual(pc2.iceConnectionState, "new")
+        self.assertEqual(pc2.iceGatheringState, "new")
+        self.assertIsNone(pc2.localDescription)
+        self.assertIsNone(pc2.remoteDescription)
+
+        # create offer
+        pc1.addTrack(VideoStreamTrack())
+        offer = await pc1.createOffer()
+        self.assertEqual(offer.type, "offer")
+        self.assertTrue("m=video " in offer.sdp)
+        self.assertFalse("a=candidate:" in offer.sdp)
+        self.assertFalse("typ host" in offer.sdp)
+        self.assertFalse("typ srflx" in offer.sdp)
+        self.assertFalse("a=end-of-candidates" in offer.sdp)
+
+        await pc1.setLocalDescription(offer)
+        self.assertEqual(pc1.iceConnectionState, "new")
+        self.assertEqual(pc1.iceGatheringState, "complete")
+        self.assertEqual(mids(pc1), ["0"])
+        self.assertTrue("m=video " in pc1.localDescription.sdp)
+        self.assertTrue("a=sendrecv" in pc1.localDescription.sdp)
+        self.assertHasIceCandidates(pc1.localDescription)
+        self.assertTrue("typ host" in pc1.localDescription.sdp)
+        self.assertTrue("typ srflx" in pc1.localDescription.sdp)
+        self.assertHasDtls(pc1.localDescription, "actpass")
+
+        # handle offer
+        await pc2.setRemoteDescription(pc1.localDescription)
+        self.assertEqual(pc2.remoteDescription, pc1.localDescription)
+        self.assertEqual(len(pc2.getReceivers()), 1)
+        self.assertEqual(len(pc2.getSenders()), 1)
+        self.assertEqual(len(pc2.getTransceivers()), 1)
+        self.assertEqual(mids(pc2), ["0"])
+
+        # create answer
+        pc2.addTrack(VideoStreamTrack())
+        answer = await pc2.createAnswer()
+        self.assertEqual(answer.type, "answer")
+        self.assertTrue("m=video " in answer.sdp)
+        self.assertFalse("a=candidate:" in answer.sdp)
+        self.assertFalse("typ host" in answer.sdp)
+        self.assertFalse("typ srflx" in answer.sdp)
+        self.assertFalse("a=end-of-candidates" in answer.sdp)
+
+        await pc2.setLocalDescription(answer)
+        await self.assertIceChecking(pc2)
+        self.assertTrue("m=video " in pc2.localDescription.sdp)
+        self.assertTrue("a=sendrecv" in pc2.localDescription.sdp)
+        self.assertHasIceCandidates(pc2.localDescription)
+        self.assertFalse("typ host" in pc2.localDescription.sdp)
+        self.assertTrue("typ srflx" in pc2.localDescription.sdp)
+        self.assertHasDtls(pc2.localDescription, "active")
+
+        # close
+        await pc1.close()
+        await pc2.close()
+        self.assertEqual(pc1.iceConnectionState, "closed")
+        self.assertEqual(pc2.iceConnectionState, "closed")
+
+        # check state changes
+        self.assertEqual(
+            pc1_states["connectionState"], ["new", "closed"]
+        )
+        self.assertEqual(
+            pc1_states["iceConnectionState"], ["new", "closed"]
+        )
+        self.assertEqual(
+            pc1_states["iceGatheringState"], ["new", "gathering", "complete"]
+        )
+        self.assertEqual(
+            pc1_states["signalingState"],
+            ["stable", "have-local-offer", "closed"],
+        )
+
+        self.assertEqual(
+            pc2_states["connectionState"], ["new", "connecting", "closed"]
+        )
+        self.assertEqual(
+            pc2_states["iceConnectionState"], ["new", "checking", "closed"]
+        )
+        self.assertEqual(
+            pc2_states["iceGatheringState"], ["new", "gathering", "complete"]
+        )
+        self.assertEqual(
+            pc2_states["signalingState"],
+            ["stable", "have-remote-offer", "stable", "closed"],
+        )
+
+    @asynctest
     async def test_connect_datachannel_and_close_immediately(self):
         pc1 = RTCPeerConnection()
         pc2 = RTCPeerConnection()

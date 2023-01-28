@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from aioice import Candidate, Connection, ConnectionClosed
+from aioice import Candidate, Connection, ConnectionClosed, TransportPolicy
 from pyee.asyncio import AsyncIOEventEmitter
 
 from .exceptions import InvalidStateError
@@ -92,7 +92,8 @@ def candidate_to_aioice(x: RTCIceCandidate) -> Candidate:
     )
 
 
-def connection_kwargs(servers: List[RTCIceServer]) -> Dict[str, Any]:
+def connection_kwargs(servers: List[RTCIceServer],
+                      iceTransportPolicy: TransportPolicy) -> Dict[str, Any]:
     kwargs: Dict[str, Any] = {}
 
     for server in servers:
@@ -134,6 +135,8 @@ def connection_kwargs(servers: List[RTCIceServer]) -> Dict[str, Any]:
                 kwargs["turn_username"] = server.username
                 kwargs["turn_password"] = server.credential
 
+    kwargs["transport_policy"] = iceTransportPolicy
+
     return kwargs
 
 
@@ -174,12 +177,14 @@ class RTCIceGatherer(AsyncIOEventEmitter):
     exchanged in signaling.
     """
 
-    def __init__(self, iceServers: Optional[List[RTCIceServer]] = None) -> None:
+    def __init__(self,
+                 iceServers: Optional[List[RTCIceServer]] = None,
+                 iceTransportPolicy: TransportPolicy = TransportPolicy.ALL) -> None:
         super().__init__()
 
         if iceServers is None:
             iceServers = self.getDefaultIceServers()
-        ice_kwargs = connection_kwargs(iceServers)
+        ice_kwargs = connection_kwargs(iceServers, iceTransportPolicy)
 
         self._connection = Connection(ice_controlling=False, **ice_kwargs)
         self._remote_candidates_end = False

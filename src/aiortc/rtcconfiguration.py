@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional
+from aioice import TransportPolicy
 
 
 @dataclass
@@ -31,3 +32,6 @@ class RTCConfiguration:
 
     iceServers: Optional[List[RTCIceServer]] = None
     "A list of :class:`RTCIceServer` objects to configure STUN / TURN servers."
+
+    iceTransportPolicy: TransportPolicy = TransportPolicy.ALL
+    "ICE transport policy."
